@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🐱 數學試卷查重系統 (Math Paper Similarity Checker)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Mammoth.js for DOCX -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
+    <!-- PDF.js for PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script>
+        // Initialize PDF.js worker
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+    </script>
+    <style>
+        body { background-color: #f0f8ff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .cat-shadow { box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.1), 0 2px 4px -1px rgba(59, 130, 246, 0.06); }
+        .paw-print { background-image: radial-gradient(circle, #bfdbfe 20%, transparent 20%); background-size: 20px 20px; }
+        /* Custom Scrollbar for results */
+        .results-container::-webkit-scrollbar { width: 8px; }
+        .results-container::-webkit-scrollbar-track { background: #e0f2fe; border-radius: 4px; }
+        .results-container::-webkit-scrollbar-thumb { background: #93c5fd; border-radius: 4px; }
+    </style>
+</head>
+<body class="paw-print min-h-screen p-4 md:p-8 text-slate-800">
+    <div class="max-w-5xl mx-auto">
+        <!-- Header -->
+        <header class="bg-blue-600 text-white rounded-t-2xl p-6 text-center cat-shadow relative overflow-hidden">
+            <h1 class="text-3xl font-bold mb-2">🐾 數學試卷查重系統</h1>
+            <p class="text-blue-100">HKDSE 數學科題目相似度比對工具 (S1-S6)</p>
+            <div class="absolute -top-4 -right-4 text-7xl opacity-20">🐱</div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="bg-white rounded-b-2xl p-6 md:p-8 cat-shadow mb-8 border-t-4 border-blue-300">
+            <!-- Settings & Upload Form -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <div class="bg-blue-50 p-5 rounded-xl border border-blue-100">
+                    <h2 class="text-lg font-bold text-blue-800 mb-4">🐈 試卷設定</h2>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-sm font-medium text-blue-700 mb-1">年級 (Form)</label>
+                            <select id="formSelect" class="w-full rounded-lg border-blue-200 p-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                                <option value="S1">S1</option><option value="S2">S2</option><option value="S3">S3</option>
+                                <option value="S4">S4</option><option value="S5">S5</option><option value="S6" selected>S6</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-blue-700 mb-1">卷別 (Module/Paper)</label>
+                            <select id="moduleSelect" class="w-full rounded-lg border-blue-200 p-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                                <option value="Compulsory_P1">Compulsory Part (Paper 1)</option>
+                                <option value="Compulsory_P2">Compulsory Part (Paper 2)</option>
+                                <option value="M1">Extended Module 1 (M1)</option>
+                                <option value="M2">Extended Module 2 (M2)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-blue-700 mb-1">GitHub 儲存庫 (例如: username/repo)</label>
+                            <input type="text" id="repoInput" placeholder="username/math-papers" class="w-full rounded-lg border-gray-300 p-2 outline-none border focus:border-blue-500">
+                            <p class="text-xs text-blue-500 mt-1">留空則僅使用手動上傳的歷史試卷進行比對</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-blue-50 p-5 rounded-xl border border-blue-100 flex flex-col justify-between">
+                    <div>
+                        <h2 class="text-lg font-bold text-blue-800 mb-4">📥 上傳試卷</h2>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-blue-700 mb-1">上傳新試卷 (待檢查) - .docx / .pdf</label>
+                            <input type="file" id="newPaperUpload" accept=".docx,.pdf" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200">
+                        </div>
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-blue-700 mb-1">手動上傳歷史試卷 (可多選作補充) - .docx / .pdf</label>
+                            <input type="file" id="pastPapersUpload" accept=".docx,.pdf" multiple class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200">
+                        </div>
+                    </div>
+                    <button onclick="startAnalysis()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition duration-200 shadow-md flex justify-center items-center gap-2">
+                        <span>開始查重比對</span> 🔍
+                    </button>
+                </div>
+            </div>
+
+            <!-- Loading State -->
+            <div id="loadingState" class="hidden text-center py-8">
+                <div class="inline-block animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-blue-600 mb-4"></div>
+                <p class="text-blue-800 font-medium" id="loadingText">正在解析試卷與數學表達式，請稍候... 🐱</p>
+            </div>
+
+            <!-- Results Dashboard -->
+            <div id="resultsDashboard" class="hidden">
+                <h2 class="text-2xl font-bold text-slate-800 border-b-2 border-blue-200 pb-2 mb-6">📊 分析結果 (Results)</h2>
+                
+                <div class="grid grid-cols-3 gap-4 mb-6 text-center">
+                    <div class="bg-red-50 p-4 rounded-xl border border-red-200">
+                        <div class="text-3xl mb-1">🔴</div>
+                        <div class="font-bold text-red-700 text-xl" id="countExact">0</div>
+                        <div class="text-sm text-red-600">完全重複 (100%)</div>
+                    </div>
+                    <div class="bg-yellow-50 p-4 rounded-xl border border-yellow-200">
+                        <div class="text-3xl mb-1">🟡</div>
+                        <div class="font-bold text-yellow-700 text-xl" id="countHigh">0</div>
+                        <div class="text-sm text-yellow-600">高度相似 (>70%)</div>
+                    </div>
+                    <div class="bg-green-50 p-4 rounded-xl border border-green-200">
+                        <div class="text-3xl mb-1">🟢</div>
+                        <div class="font-bold text-green-700 text-xl" id="countUnique">0</div>
+                        <div class="text-sm text-green-600">全新題目 (<70%)</div>
+                    </div>
+                </div>
+
+                <div id="resultsList" class="space-y-4 max-h-[600px] overflow-y-auto results-container pr-2">
+                    <!-- Dynamic Results go here -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // --- Document Parsing Utilities ---
+        async function extractTextFromFile(file) {
+            if (file.name.endsWith('.docx')) {
+                const arrayBuffer = await file.arrayBuffer();
+                const result = await mammoth.extractRawText({arrayBuffer});
+                return result.value;
+            } else if (file.name.endsWith('.pdf')) {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
+                let fullText = '';
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    fullText += textContent.items.map(item => item.str).join(' ') + '\n';
+                }
+                return fullText;
+            }
+            return '';
+        }
+
+        // --- Similarity Algorithm (Dice Coefficient) ---
+        function calculateSimilarity(str1, str2) {
+            const clean1 = str1.replace(/\s+/g, '').toLowerCase();
+            const clean2 = str2.replace(/\s+/g, '').toLowerCase();
+            if (clean1 === clean2) return 1.0;
+            if (clean1.length < 2 || clean2.length < 2) return 0;
+            
+            let bigrams1 = new Map();
+            for (let i = 0; i < clean1.length - 1; i++) {
+                const bg = clean1.substring(i, i+2);
+                bigrams1.set(bg, (bigrams1.get(bg) || 0) + 1);
+            }
+            
+            let intersection = 0;
+            for (let i = 0; i < clean2.length - 1; i++) {
+                const bg = clean2.substring(i, i+2);
+                if (bigrams1.has(bg) && bigrams1.get(bg) > 0) {
+                    bigrams1.set(bg, bigrams1.get(bg) - 1);
+                    intersection++;
+                }
+            }
+            return (2.0 * intersection) / (clean1.length - 1 + clean2.length - 1);
+        }
+
+        // --- Question Chunker Heuristic ---
+        // Basic heuristic: split by numbered lists (e.g., "1. ", "2(a)", etc.) or double line breaks
+        function chunkTextIntoQuestions(text) {
+            const chunks = text.split(/\n\s*\n/).map(c => c.trim()).filter(c => c.length > 20);
+            return chunks;
+        }
+
+        // --- GitHub Fetching ---
+        async function fetchPastPapersFromGitHub(repo, form, moduleName) {
+            if (!repo) return [];
+            // Expected historical scope: Past 3 years, 2 terms
+            const currentYear = new Date().getFullYear();
+            const years = [currentYear-1, currentYear-2, currentYear-3];
+            const terms = ['Term1', 'Final'];
+            const exts = ['.docx', '.pdf'];
+            let fetchedTexts = [];
+
+            for (const year of years) {
+                for (const term of terms) {
+                    for (const ext of exts) {
+                        const path = `papers/${form}/${moduleName}_${year}_${term}${ext}`;
+                        const url = `https://raw.githubusercontent.com/${repo}/main/${path}`;
+                        try {
+                            const response = await fetch(url);
+                            if (response.ok) {
+                                const blob = await response.blob();
+                                const file = new File([blob], path);
+                                const text = await extractTextFromFile(file);
+                                fetchedTexts.push({ source: path, text: text });
+                            }
+                        } catch (e) { console.log(`Skipped missing file: ${path}`); }
+                    }
+                }
+            }
+            return fetchedTexts;
+        }
+
+        // --- Main Workflow ---
+        async function startAnalysis() {
+            const newFileInput = document.getElementById('newPaperUpload').files[0];
+            if (!newFileInput) {
+                alert('請先上傳一份新試卷 (Please upload a new paper)');
+                return;
+            }
+
+            document.getElementById('loadingState').classList.remove('hidden');
+            document.getElementById('resultsDashboard').classList.add('hidden');
+            document.getElementById('resultsList').innerHTML = '';
+
+            try {
+                // 1. Parse New Paper
+                document.getElementById('loadingText').innerText = '正在解析新試卷... 🐱';
+                const newText = await extractTextFromFile(newFileInput);
+                const newQuestions = chunkTextIntoQuestions(newText);
+
+                // 2. Fetch/Parse Past Papers
+                document.getElementById('loadingText').innerText = '正在加載歷史試卷庫... 🐾';
+                let pastPapers = [];
+                const repo = document.getElementById('repoInput').value.trim();
+                const form = document.getElementById('formSelect').value;
+                const mod = document.getElementById('moduleSelect').value;
+                
+                if (repo) {
+                    const ghPapers = await fetchPastPapersFromGitHub(repo, form, mod);
+                    pastPapers.push(...ghPapers);
+                }
+
+                // Add manually uploaded past papers
+                const pastFileInputs = document.getElementById('pastPapersUpload').files;
+                for (let file of pastFileInputs) {
+                    const text = await extractTextFromFile(file);
+                    pastPapers.push({ source: file.name, text: text });
+                }
+
+                if (pastPapers.length === 0) {
+                    alert('沒有找到歷史試卷，請確認 GitHub 設定或手動上傳。');
+                    document.getElementById('loadingState').classList.add('hidden');
+                    return;
+                }
+
+                // Chunk past papers
+                let allPastQuestions = [];
+                pastPapers.forEach(paper => {
+                    const qChunks = chunkTextIntoQuestions(paper.text);
+                    qChunks.forEach(q => allPastQuestions.push({ source: paper.source, text: q }));
+                });
+
+                // 3. Compare
+                document.getElementById('loadingText').innerText = '正在進行數學矩陣比對... 🔢';
+                let results = [];
+                let counts = { exact: 0, high: 0, unique: 0 };
+
+                newQuestions.forEach(newQ => {
+                    let bestMatch = { score: 0, text: '', source: '' };
+                    allPastQuestions.forEach(pastQ => {
+                        const score = calculateSimilarity(newQ, pastQ.text);
+                        if (score > bestMatch.score) {
+                            bestMatch = { score, text: pastQ.text, source: pastQ.source };
+                        }
+                    });
+
+                    const percentage = Math.round(bestMatch.score * 100);
+                    let category = 'unique';
+                    let color = 'border-green-200 bg-green-50';
+                    let dot = '🟢';
+                    
+                    if (percentage === 100) { category = 'exact'; color = 'border-red-200 bg-red-50'; dot = '🔴'; counts.exact++; }
+                    else if (percentage >= 70) { category = 'high'; color = 'border-yellow-200 bg-yellow-50'; dot = '🟡'; counts.high++; }
+                    else { counts.unique++; }
+
+                    results.push({ newQ, bestMatch, percentage, color, dot, category });
+                });
+
+                // 4. Render Results
+                document.getElementById('countExact').innerText = counts.exact;
+                document.getElementById('countHigh').innerText = counts.high;
+                document.getElementById('countUnique').innerText = counts.unique;
+
+                const listDiv = document.getElementById('resultsList');
+                results.sort((a, b) => b.percentage - a.percentage).forEach((res, index) => {
+                    listDiv.innerHTML += `
+                        <div class="p-4 rounded-xl border ${res.color} flex flex-col md:flex-row gap-4">
+                            <div class="w-full md:w-1/2">
+                                <div class="font-bold text-slate-700 mb-2">${res.dot} Uploaded Question ${index + 1}</div>
+                                <div class="text-sm text-slate-600 whitespace-pre-wrap bg-white p-3 rounded border opacity-90">${res.newQ}</div>
+                            </div>
+                            <div class="w-full md:w-1/2">
+                                <div class="font-bold text-slate-700 mb-2 flex justify-between items-center">
+                                    <span>最相似歷史題目 (相似度: ${res.percentage}%)</span>
+                                </div>
+                                <div class="text-xs text-blue-600 mb-1">📁 來源: ${res.bestMatch.source || 'N/A'}</div>
+                                <div class="text-sm text-slate-600 whitespace-pre-wrap bg-white p-3 rounded border opacity-90">${res.bestMatch.text || '無足夠資料比對'}</div>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                document.getElementById('loadingState').classList.add('hidden');
+                document.getElementById('resultsDashboard').classList.remove('hidden');
+
+            } catch (error) {
+                console.error(error);
+                alert('處理過程中發生錯誤: ' + error.message);
+                document.getElementById('loadingState').classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
