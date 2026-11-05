@@ -166,34 +166,49 @@
         }
 
         // --- GitHub Fetching ---
+       // --- 升級版 GitHub Fetching (支援更長年份及 master/main branch) ---
         async function fetchPastPapersFromGitHub(repo, form, moduleName) {
             if (!repo || repo.includes('你的GitHub帳號名稱')) return [];
-            const currentYear = new Date().getFullYear();
-            const years = [currentYear-1, currentYear-2, currentYear-3];
+            
+            // 擴大搜尋年份範圍：由 2015 到 2026 (你可以自行加減)
+            const years = [2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016, 2015];
             const terms = ['Term1', 'Final'];
             const exts = ['.docx', '.pdf'];
+            const branches = ['main', 'master']; // 同時支援兩種常見 branch 命名
             let fetchedTexts = [];
+
+            console.log(`開始搜尋 GitHub: ${repo} -> ${form} -> ${moduleName}`);
 
             for (const year of years) {
                 for (const term of terms) {
                     for (const ext of exts) {
                         const path = `papers/${form}/${moduleName}_${year}_${term}${ext}`;
-                        const url = `https://raw.githubusercontent.com/${repo}/main/${path}`;
-                        try {
-                            const response = await fetch(url);
-                            if (response.ok) {
-                                const blob = await response.blob();
-                                const file = new File([blob], path);
-                                const text = await extractTextFromFile(file);
-                                fetchedTexts.push({ source: path, text: text });
+                        let fileFound = false;
+
+                        for (const branch of branches) {
+                            if (fileFound) break;
+                            const url = `https://raw.githubusercontent.com/${repo}/${branch}/${path}`;
+                            
+                            try {
+                                const response = await fetch(url);
+                                if (response.ok) {
+                                    console.log(`✅ 成功搵到試卷: ${url}`);
+                                    const blob = await response.blob();
+                                    const file = new File([blob], path);
+                                    const text = await extractTextFromFile(file);
+                                    fetchedTexts.push({ source: path, text: text });
+                                    fileFound = true;
+                                }
+                            } catch (e) { 
+                                // 靜默略過，繼續搵下一個
                             }
-                        } catch (e) { console.log(`Skipped missing file: ${path}`); }
+                        }
                     }
                 }
             }
+            console.log(`搜尋完畢，共搵到 ${fetchedTexts.length} 份歷史試卷。`);
             return fetchedTexts;
         }
-
         // --- Main Workflow ---
         async function startAnalysis() {
             const newFileInput = document.getElementById('newPaperUpload').files[0];
