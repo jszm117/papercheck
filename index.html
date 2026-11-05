@@ -11,14 +11,12 @@
     <!-- PDF.js for PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <script>
-        // Initialize PDF.js worker
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
     </script>
     <style>
         body { background-color: #f0f8ff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         .cat-shadow { box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.1), 0 2px 4px -1px rgba(59, 130, 246, 0.06); }
         .paw-print { background-image: radial-gradient(circle, #bfdbfe 20%, transparent 20%); background-size: 20px 20px; }
-        /* Custom Scrollbar for results */
         .results-container::-webkit-scrollbar { width: 8px; }
         .results-container::-webkit-scrollbar-track { background: #e0f2fe; border-radius: 4px; }
         .results-container::-webkit-scrollbar-thumb { background: #93c5fd; border-radius: 4px; }
@@ -57,9 +55,9 @@
                             </select>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-blue-700 mb-1">GitHub 儲存庫 (例如: username/repo)</label>
-                            <input type="text" id="repoInput" placeholder="username/math-papers" class="w-full rounded-lg border-gray-300 p-2 outline-none border focus:border-blue-500">
-                            <p class="text-xs text-blue-500 mt-1">留空則僅使用手動上傳的歷史試卷進行比對</p>
+                            <label class="block text-sm font-medium text-blue-700 mb-1">GitHub 儲存庫 (已鎖定預設值)</label>
+                            <!-- 就在下一行！把 "你的GitHub帳號名稱" 改成你真實的帳號 -->
+                            <input type="text" id="repoInput" value="jszm117/papercheck" readonly class="w-full rounded-lg border-gray-300 p-2 outline-none border bg-gray-100 text-gray-600 cursor-not-allowed">
                         </div>
                     </div>
                 </div>
@@ -72,7 +70,7 @@
                             <input type="file" id="newPaperUpload" accept=".docx,.pdf" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200">
                         </div>
                         <div class="mb-4">
-                            <label class="block text-sm font-medium text-blue-700 mb-1">手動上傳歷史試卷 (可多選作補充) - .docx / .pdf</label>
+                            <label class="block text-sm font-medium text-blue-700 mb-1">手動上傳補充歷史試卷 (選填) - .docx / .pdf</label>
                             <input type="file" id="pastPapersUpload" accept=".docx,.pdf" multiple class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200">
                         </div>
                     </div>
@@ -163,16 +161,13 @@
         }
 
         // --- Question Chunker Heuristic ---
-        // Basic heuristic: split by numbered lists (e.g., "1. ", "2(a)", etc.) or double line breaks
         function chunkTextIntoQuestions(text) {
-            const chunks = text.split(/\n\s*\n/).map(c => c.trim()).filter(c => c.length > 20);
-            return chunks;
+            return text.split(/\n\s*\n/).map(c => c.trim()).filter(c => c.length > 20);
         }
 
         // --- GitHub Fetching ---
         async function fetchPastPapersFromGitHub(repo, form, moduleName) {
-            if (!repo) return [];
-            // Expected historical scope: Past 3 years, 2 terms
+            if (!repo || repo.includes('你的GitHub帳號名稱')) return [];
             const currentYear = new Date().getFullYear();
             const years = [currentYear-1, currentYear-2, currentYear-3];
             const terms = ['Term1', 'Final'];
@@ -212,24 +207,19 @@
             document.getElementById('resultsList').innerHTML = '';
 
             try {
-                // 1. Parse New Paper
                 document.getElementById('loadingText').innerText = '正在解析新試卷... 🐱';
                 const newText = await extractTextFromFile(newFileInput);
                 const newQuestions = chunkTextIntoQuestions(newText);
 
-                // 2. Fetch/Parse Past Papers
                 document.getElementById('loadingText').innerText = '正在加載歷史試卷庫... 🐾';
                 let pastPapers = [];
                 const repo = document.getElementById('repoInput').value.trim();
                 const form = document.getElementById('formSelect').value;
                 const mod = document.getElementById('moduleSelect').value;
                 
-                if (repo) {
-                    const ghPapers = await fetchPastPapersFromGitHub(repo, form, mod);
-                    pastPapers.push(...ghPapers);
-                }
+                const ghPapers = await fetchPastPapersFromGitHub(repo, form, mod);
+                pastPapers.push(...ghPapers);
 
-                // Add manually uploaded past papers
                 const pastFileInputs = document.getElementById('pastPapersUpload').files;
                 for (let file of pastFileInputs) {
                     const text = await extractTextFromFile(file);
@@ -237,19 +227,19 @@
                 }
 
                 if (pastPapers.length === 0) {
-                    alert('沒有找到歷史試卷，請確認 GitHub 設定或手動上傳。');
-                    document.getElementById('loadingState').classList.add('hidden');
-                    return;
+                    alert('注意：未能從 GitHub 自動抓取到任何試卷，系統將只比對你手動上傳的補充歷史試卷（如果有的話）。\n\n請確保你已在程式碼中填入真實的 GitHub 帳號名稱，且檔案名稱與路徑設定正確。');
+                    if (pastFileInputs.length === 0) {
+                        document.getElementById('loadingState').classList.add('hidden');
+                        return;
+                    }
                 }
 
-                // Chunk past papers
                 let allPastQuestions = [];
                 pastPapers.forEach(paper => {
                     const qChunks = chunkTextIntoQuestions(paper.text);
                     qChunks.forEach(q => allPastQuestions.push({ source: paper.source, text: q }));
                 });
 
-                // 3. Compare
                 document.getElementById('loadingText').innerText = '正在進行數學矩陣比對... 🔢';
                 let results = [];
                 let counts = { exact: 0, high: 0, unique: 0 };
@@ -275,7 +265,6 @@
                     results.push({ newQ, bestMatch, percentage, color, dot, category });
                 });
 
-                // 4. Render Results
                 document.getElementById('countExact').innerText = counts.exact;
                 document.getElementById('countHigh').innerText = counts.high;
                 document.getElementById('countUnique').innerText = counts.unique;
@@ -285,7 +274,7 @@
                     listDiv.innerHTML += `
                         <div class="p-4 rounded-xl border ${res.color} flex flex-col md:flex-row gap-4">
                             <div class="w-full md:w-1/2">
-                                <div class="font-bold text-slate-700 mb-2">${res.dot} Uploaded Question ${index + 1}</div>
+                                <div class="font-bold text-slate-700 mb-2">${res.dot} 新題目 (第 ${index + 1} 題)</div>
                                 <div class="text-sm text-slate-600 whitespace-pre-wrap bg-white p-3 rounded border opacity-90">${res.newQ}</div>
                             </div>
                             <div class="w-full md:w-1/2">
