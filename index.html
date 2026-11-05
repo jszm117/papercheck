@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🐱 數學試卷查重系統 (Math Paper Similarity Checker)</title>
+    <title>🐱 數學試卷深度查重系統 (Math Equation Supported)</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Mammoth.js for DOCX -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.21/mammoth.browser.min.js"></script>
+    <!-- JSZip for Deep DOCX & Math Equation Extraction -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <!-- PDF.js for PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <script>
@@ -20,14 +20,15 @@
         .results-container::-webkit-scrollbar { width: 8px; }
         .results-container::-webkit-scrollbar-track { background: #e0f2fe; border-radius: 4px; }
         .results-container::-webkit-scrollbar-thumb { background: #93c5fd; border-radius: 4px; }
+        .math-highlight { color: #d97706; font-family: 'Cambria Math', 'Times New Roman', serif; }
     </style>
 </head>
 <body class="paw-print min-h-screen p-4 md:p-8 text-slate-800">
     <div class="max-w-5xl mx-auto">
         <!-- Header -->
         <header class="bg-blue-600 text-white rounded-t-2xl p-6 text-center cat-shadow relative overflow-hidden">
-            <h1 class="text-3xl font-bold mb-2">🐾 數學試卷查重系統</h1>
-            <p class="text-blue-100">HKDSE 數學科題目相似度比對工具 (S1-S6)</p>
+            <h1 class="text-3xl font-bold mb-2">🐾 數學試卷深度查重系統</h1>
+            <p class="text-blue-100">已支援數學公式 (Math Equations) 及題號自動識別</p>
             <div class="absolute -top-4 -right-4 text-7xl opacity-20">🐱</div>
         </header>
 
@@ -55,8 +56,8 @@
                             </select>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-blue-700 mb-1">GitHub 儲存庫 (已鎖定預設值)</label>
-                            <!-- 就在下一行！把 "你的GitHub帳號名稱" 改成你真實的帳號 -->
+                            <label class="block text-sm font-medium text-blue-700 mb-1">GitHub 儲存庫</label>
+                            <!-- 請在此輸入你真實的 GitHub Repo -->
                             <input type="text" id="repoInput" value="jszm117/papercheck" readonly class="w-full rounded-lg border-gray-300 p-2 outline-none border bg-gray-100 text-gray-600 cursor-not-allowed">
                         </div>
                     </div>
@@ -64,18 +65,14 @@
 
                 <div class="bg-blue-50 p-5 rounded-xl border border-blue-100 flex flex-col justify-between">
                     <div>
-                        <h2 class="text-lg font-bold text-blue-800 mb-4">📥 上傳試卷</h2>
+                        <h2 class="text-lg font-bold text-blue-800 mb-4">📥 上傳新試卷</h2>
                         <div class="mb-4">
                             <label class="block text-sm font-medium text-blue-700 mb-1">上傳新試卷 (待檢查) - .docx / .pdf</label>
                             <input type="file" id="newPaperUpload" accept=".docx,.pdf" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200">
                         </div>
-                        <div class="mb-4">
-                            <label class="block text-sm font-medium text-blue-700 mb-1">手動上傳補充歷史試卷 (選填) - .docx / .pdf</label>
-                            <input type="file" id="pastPapersUpload" accept=".docx,.pdf" multiple class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200">
-                        </div>
                     </div>
                     <button onclick="startAnalysis()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition duration-200 shadow-md flex justify-center items-center gap-2">
-                        <span>開始查重比對</span> 🔍
+                        <span>開始深度比對 (含公式解析)</span> 🔍
                     </button>
                 </div>
             </div>
@@ -108,7 +105,7 @@
                     </div>
                 </div>
 
-                <div id="resultsList" class="space-y-4 max-h-[600px] overflow-y-auto results-container pr-2">
+                <div id="resultsList" class="space-y-4 max-h-[800px] overflow-y-auto results-container pr-2">
                     <!-- Dynamic Results go here -->
                 </div>
             </div>
@@ -116,28 +113,88 @@
     </div>
 
     <script>
-        // --- Document Parsing Utilities ---
+        // --- 1. 深度文件解析引擎 (支援數學公式) ---
         async function extractTextFromFile(file) {
             if (file.name.endsWith('.docx')) {
-                const arrayBuffer = await file.arrayBuffer();
-                const result = await mammoth.extractRawText({arrayBuffer});
-                return result.value;
+                // 使用 JSZip 直接讀取底層 XML，強制提取 <w:t> (普通文字) 和 <m:t> (數學公式)
+                const zip = await JSZip.loadAsync(file);
+                const docXml = await zip.file("word/document.xml").async("string");
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(docXml, "text/xml");
+                const paragraphs = xmlDoc.getElementsByTagName("w:p");
+                
+                let fullText = '';
+                for (let i = 0; i < paragraphs.length; i++) {
+                    let pText = "";
+                    const nodes = paragraphs[i].getElementsByTagName("*");
+                    for (let j = 0; j < nodes.length; j++) {
+                        // w:t 是普通文字，m:t 是 Equation Editor 的數學內容
+                        if (nodes[j].nodeName === "w:t" || nodes[j].nodeName === "m:t") {
+                            pText += nodes[j].textContent;
+                        }
+                    }
+                    if (pText.trim() !== '') fullText += pText + "\n";
+                }
+                return fullText;
+                
             } else if (file.name.endsWith('.pdf')) {
+                // 使用 Y坐標偵測 來還原 PDF 結構，避免題號與內容混雜
                 const arrayBuffer = await file.arrayBuffer();
                 const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
                 let fullText = '';
+                
                 for (let i = 1; i <= pdf.numPages; i++) {
                     const page = await pdf.getPage(i);
                     const textContent = await page.getTextContent();
-                    fullText += textContent.items.map(item => item.str).join(' ') + '\n';
+                    let lastY = -1;
+                    
+                    for (let item of textContent.items) {
+                        const y = item.transform[5]; // Y coordinate
+                        // 如果 Y 坐標改變超過 5，視為換行
+                        if (lastY !== -1 && Math.abs(y - lastY) > 5) {
+                            fullText += '\n';
+                        }
+                        fullText += item.str;
+                        lastY = y;
+                    }
+                    fullText += '\n\n';
                 }
                 return fullText;
             }
             return '';
         }
 
-        // --- Similarity Algorithm (Dice Coefficient) ---
+        // --- 2. 智慧題號分割演算法 ---
+        function chunkTextIntoQuestions(text) {
+            const lines = text.split('\n');
+            let chunks = [];
+            let currentChunk = '';
+            
+            // 偵測題號特徵：例如 "1. ", "1.", "2)", "1(a)", "Q3 "
+            const questionPattern = /^\s*(\d+[\.\)]|\d+\s*\([a-z]\)|Q\d+)/i;
+            
+            for (let line of lines) {
+                if (questionPattern.test(line)) {
+                    if (currentChunk.trim().length > 10) {
+                        chunks.push(currentChunk.trim());
+                    }
+                    currentChunk = line + '\n';
+                } else {
+                    currentChunk += line + '\n';
+                }
+            }
+            if (currentChunk.trim().length > 10) chunks.push(currentChunk.trim());
+            
+            // 備用方案：如果全卷都冇題號格式，就按雙重換行分割
+            if (chunks.length < 2) {
+                return text.split(/\n\s*\n/).map(c => c.trim()).filter(c => c.length > 20);
+            }
+            return chunks;
+        }
+
+        // --- 3. 數學敏感相似度演算法 ---
         function calculateSimilarity(str1, str2) {
+            // 保留所有數學符號，只去除空格
             const clean1 = str1.replace(/\s+/g, '').toLowerCase();
             const clean2 = str2.replace(/\s+/g, '').toLowerCase();
             if (clean1 === clean2) return 1.0;
@@ -160,24 +217,14 @@
             return (2.0 * intersection) / (clean1.length - 1 + clean2.length - 1);
         }
 
-        // --- Question Chunker Heuristic ---
-        function chunkTextIntoQuestions(text) {
-            return text.split(/\n\s*\n/).map(c => c.trim()).filter(c => c.length > 20);
-        }
-
-        // --- GitHub Fetching ---
-       // --- 升級版 GitHub Fetching (支援更長年份及 master/main branch) ---
+        // --- 4. GitHub 抓取模組 (支援長年份及 main/master) ---
         async function fetchPastPapersFromGitHub(repo, form, moduleName) {
-            if (!repo || repo.includes('你的GitHub帳號名稱')) return [];
-            
-            // 擴大搜尋年份範圍：由 2015 到 2026 (你可以自行加減)
-            const years = [2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016, 2015];
+            if (!repo) return [];
+            const years = [2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018];
             const terms = ['Term1', 'Final'];
             const exts = ['.docx', '.pdf'];
-            const branches = ['main', 'master']; // 同時支援兩種常見 branch 命名
+            const branches = ['main', 'master'];
             let fetchedTexts = [];
-
-            console.log(`開始搜尋 GitHub: ${repo} -> ${form} -> ${moduleName}`);
 
             for (const year of years) {
                 for (const term of terms) {
@@ -192,23 +239,20 @@
                             try {
                                 const response = await fetch(url);
                                 if (response.ok) {
-                                    console.log(`✅ 成功搵到試卷: ${url}`);
                                     const blob = await response.blob();
                                     const file = new File([blob], path);
                                     const text = await extractTextFromFile(file);
                                     fetchedTexts.push({ source: path, text: text });
                                     fileFound = true;
                                 }
-                            } catch (e) { 
-                                // 靜默略過，繼續搵下一個
-                            }
+                            } catch (e) {}
                         }
                     }
                 }
             }
-            console.log(`搜尋完畢，共搵到 ${fetchedTexts.length} 份歷史試卷。`);
             return fetchedTexts;
         }
+
         // --- Main Workflow ---
         async function startAnalysis() {
             const newFileInput = document.getElementById('newPaperUpload').files[0];
@@ -222,11 +266,11 @@
             document.getElementById('resultsList').innerHTML = '';
 
             try {
-                document.getElementById('loadingText').innerText = '正在解析新試卷... 🐱';
+                document.getElementById('loadingText').innerText = '正在使用 JSZip 解析新試卷及數學公式... 🐱';
                 const newText = await extractTextFromFile(newFileInput);
                 const newQuestions = chunkTextIntoQuestions(newText);
 
-                document.getElementById('loadingText').innerText = '正在加載歷史試卷庫... 🐾';
+                document.getElementById('loadingText').innerText = '正在加載及解析 GitHub 歷史試卷庫... 🐾';
                 let pastPapers = [];
                 const repo = document.getElementById('repoInput').value.trim();
                 const form = document.getElementById('formSelect').value;
@@ -235,18 +279,10 @@
                 const ghPapers = await fetchPastPapersFromGitHub(repo, form, mod);
                 pastPapers.push(...ghPapers);
 
-                const pastFileInputs = document.getElementById('pastPapersUpload').files;
-                for (let file of pastFileInputs) {
-                    const text = await extractTextFromFile(file);
-                    pastPapers.push({ source: file.name, text: text });
-                }
-
                 if (pastPapers.length === 0) {
-                    alert('注意：未能從 GitHub 自動抓取到任何試卷，系統將只比對你手動上傳的補充歷史試卷（如果有的話）。\n\n請確保你已在程式碼中填入真實的 GitHub 帳號名稱，且檔案名稱與路徑設定正確。');
-                    if (pastFileInputs.length === 0) {
-                        document.getElementById('loadingState').classList.add('hidden');
-                        return;
-                    }
+                    alert('未能在 GitHub 搵到對應年份嘅試卷，請確認是否有上傳。');
+                    document.getElementById('loadingState').classList.add('hidden');
+                    return;
                 }
 
                 let allPastQuestions = [];
@@ -255,7 +291,7 @@
                     qChunks.forEach(q => allPastQuestions.push({ source: paper.source, text: q }));
                 });
 
-                document.getElementById('loadingText').innerText = '正在進行數學矩陣比對... 🔢';
+                document.getElementById('loadingText').innerText = '正在比對數學表達式與文字特徵... 🔢';
                 let results = [];
                 let counts = { exact: 0, high: 0, unique: 0 };
 
@@ -277,7 +313,11 @@
                     else if (percentage >= 70) { category = 'high'; color = 'border-yellow-200 bg-yellow-50'; dot = '🟡'; counts.high++; }
                     else { counts.unique++; }
 
-                    results.push({ newQ, bestMatch, percentage, color, dot, category });
+                    // 將可能係數字或代數嘅特徵 (例如 x, y, 平方) 稍微 highlight 顯示
+                    const formattedNewQ = newQ.replace(/([0-9xXyYθπ^√∫=+-]+)/g, '<span class="math-highlight">$1</span>');
+                    const formattedBestMatch = bestMatch.text ? bestMatch.text.replace(/([0-9xXyYθπ^√∫=+-]+)/g, '<span class="math-highlight">$1</span>') : '無足夠資料比對';
+
+                    results.push({ newQ: formattedNewQ, bestMatchText: formattedBestMatch, bestMatchSource: bestMatch.source, percentage, color, dot, category });
                 });
 
                 document.getElementById('countExact').innerText = counts.exact;
@@ -289,15 +329,15 @@
                     listDiv.innerHTML += `
                         <div class="p-4 rounded-xl border ${res.color} flex flex-col md:flex-row gap-4">
                             <div class="w-full md:w-1/2">
-                                <div class="font-bold text-slate-700 mb-2">${res.dot} 新題目 (第 ${index + 1} 題)</div>
+                                <div class="font-bold text-slate-700 mb-2">${res.dot} 新題目 (智能分割第 ${index + 1} 題)</div>
                                 <div class="text-sm text-slate-600 whitespace-pre-wrap bg-white p-3 rounded border opacity-90">${res.newQ}</div>
                             </div>
                             <div class="w-full md:w-1/2">
                                 <div class="font-bold text-slate-700 mb-2 flex justify-between items-center">
                                     <span>最相似歷史題目 (相似度: ${res.percentage}%)</span>
                                 </div>
-                                <div class="text-xs text-blue-600 mb-1">📁 來源: ${res.bestMatch.source || 'N/A'}</div>
-                                <div class="text-sm text-slate-600 whitespace-pre-wrap bg-white p-3 rounded border opacity-90">${res.bestMatch.text || '無足夠資料比對'}</div>
+                                <div class="text-xs text-blue-600 mb-1">📁 來源: ${res.bestMatchSource || 'N/A'}</div>
+                                <div class="text-sm text-slate-600 whitespace-pre-wrap bg-white p-3 rounded border opacity-90">${res.bestMatchText}</div>
                             </div>
                         </div>
                     `;
