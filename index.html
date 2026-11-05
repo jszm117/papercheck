@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🐱 數學試卷 Turnitin 查重系統 (精準定位版)</title>
+    <title>🐱 數學試卷 Turnitin 查重系統 (高亮定位修復版)</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- JSZip for Deep DOCX -->
@@ -34,7 +34,7 @@
         <!-- Header -->
         <header class="bg-blue-600 text-white rounded-t-2xl p-6 text-center cat-shadow relative overflow-hidden">
             <h1 class="text-3xl font-bold mb-2">🐾 數學科 Turnitin 級查重系統</h1>
-            <p class="text-blue-100">精準定位版：支援 PDF 智慧跳頁與即時渲染</p>
+            <p class="text-blue-100">高亮定位版：修復頁面卡頓、加入自動捲動與黃色螢光筆</p>
             <div class="absolute -top-4 -right-4 text-7xl opacity-20">🐱</div>
         </header>
 
@@ -85,7 +85,7 @@
             <div id="loadingState" class="hidden text-center py-12">
                 <div class="inline-block animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-600 mb-4"></div>
                 <p class="text-xl text-blue-800 font-bold" id="loadingText">正在進行深度文件掃描... 🐱</p>
-                <p class="text-sm text-blue-500 mt-2">（系統正在抓取文字與公式特徵，並建立分頁索引）</p>
+                <p class="text-sm text-blue-500 mt-2">（系統正在建立文字層與座標索引）</p>
             </div>
 
             <!-- Document Viewer -->
@@ -102,10 +102,9 @@
                     <span class="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm font-bold border border-yellow-300">🟡 高度相似: <span id="statHigh">0</span> 行</span>
                 </div>
 
-                <p class="text-sm text-slate-500 mb-4">💡 提示：<strong class="text-blue-600">點擊</strong>高亮文字，系統會自動跳轉至原版 PDF 的對應頁面！</p>
+                <p class="text-sm text-slate-500 mb-4">💡 提示：<strong class="text-blue-600">點擊</strong>高亮文字，系統會自動標記黃色螢光筆並跳轉至對應題目！</p>
 
                 <div class="bg-gray-50 border-2 border-gray-200 rounded-lg p-8 shadow-inner max-h-[700px] overflow-y-auto doc-viewer text-lg leading-relaxed font-serif" id="docRenderArea">
-                    <!-- Text gets injected here -->
                 </div>
             </div>
         </main>
@@ -122,33 +121,29 @@
         </div>
         
         <div>
-            <span class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">👀 原始文件預覽 (自動跳頁)</span>
+            <span class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">👀 原始文件精準預覽</span>
             
             <!-- 視覺渲染容器 -->
-            <div id="ttViewerContainer" class="bg-slate-200 border border-slate-300 rounded overflow-y-auto custom-scrollbar overflow-x-hidden h-80 relative flex flex-col items-center">
+            <div id="ttViewerContainer" class="bg-slate-200 border border-slate-300 rounded overflow-y-auto custom-scrollbar overflow-x-hidden h-80 relative flex flex-col items-center scroll-smooth">
                 
                 <!-- 載入中動畫 -->
                 <div id="ttLoading" class="absolute inset-0 flex flex-col items-center justify-center text-slate-600 text-sm font-bold bg-slate-100/90 z-20 backdrop-blur-sm">
                     <div class="animate-spin rounded-full h-8 w-8 border-t-4 border-b-4 border-blue-600 mb-2"></div>
-                    正在渲染題目頁面...
+                    正在渲染頁面與座標...
                 </div>
 
-                <!-- 備用：Docx 用的 iframe -->
                 <iframe id="ttIframe" class="hidden w-full h-full relative z-10 bg-white" frameborder="0"></iframe>
-                
-                <!-- 主力：PDF 用的即時渲染 Canvas -->
                 <canvas id="ttCanvas" class="hidden relative z-10 bg-white shadow-md my-2"></canvas>
             </div>
-            <p class="text-xs text-slate-500 mt-2 text-center">💡 提示：您可以在此小視窗內上下捲動。點擊視窗外部即可關閉。</p>
         </div>
     </div>
 
     <script>
         let matchDatabase = {};
-        let pdfDocumentCache = {}; // 快取下載過的 PDF 文件，提升渲染速度
+        let pdfDocumentCache = {}; 
+        let currentRenderTask = null; // 【修復重點】確保不會有多個渲染任務互相干擾
         const tooltip = document.getElementById('matchTooltip');
 
-        // 1. 本地新試卷提取邏輯
         async function extractTextFromFile(file) {
             if (file.name.endsWith('.docx')) {
                 const zip = await JSZip.loadAsync(file);
@@ -196,7 +191,6 @@
             return text.split('\n').map(c => c.trim()).filter(c => c.length > 5);
         }
 
-        // 2. GitHub 提取邏輯（修改版：記錄 PDF 頁碼與快取文件）
         async function fetchPastPapersFromGitHub(repo, form, moduleName) {
             if (!repo) return [];
             const years = [2026, 2025, 2024, 2023, 2022, 2021, 2020];
@@ -215,7 +209,7 @@
                                 if (ext === '.pdf') {
                                     const arrayBuffer = await response.arrayBuffer();
                                     const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
-                                    pdfDocumentCache[url] = pdf; // 存入快取供日後畫布渲染使用
+                                    pdfDocumentCache[url] = pdf; 
                                     
                                     let pages = [];
                                     for (let i = 1; i <= pdf.numPages; i++) {
@@ -233,13 +227,12 @@
                                     }
                                     fetchedTexts.push({ source: path, url: url, type: 'pdf', pages: pages });
                                 } else {
-                                    // DOCX 處理
                                     const blob = await response.blob();
                                     const file = new File([blob], path);
                                     const text = await extractTextFromFile(file);
                                     fetchedTexts.push({ source: path, url: url, type: 'docx', pages: [{pageNum: 1, text: text}] });
                                 }
-                                break; // 找到檔案就換下一個學期/年份
+                                break; 
                             }
                         } catch (e) {}
                     }
@@ -248,7 +241,6 @@
             return fetchedTexts;
         }
 
-        // 3. 相似度演算法
         function calculateSimilarity(str1, str2) {
             const clean1 = str1.replace(/\s+/g, '').toLowerCase();
             const clean2 = str2.replace(/\s+/g, '').toLowerCase();
@@ -272,7 +264,6 @@
             return (2.0 * intersection) / (clean1.length - 1 + clean2.length - 1);
         }
 
-        // 4. Tooltip 顯示與自動跳頁 Canvas 渲染
         function showTooltip(event, matchId) {
             const data = matchDatabase[matchId];
             if (!data) return;
@@ -291,7 +282,13 @@
             const viewerContainer = document.getElementById('ttViewerContainer');
 
             loading.classList.remove('hidden');
-            viewerContainer.scrollTop = 0; // 重置捲動條
+            viewerContainer.scrollTop = 0; 
+
+            // 【修復重點 1】取消正在進行中的舊渲染，清理畫布避免殘影
+            if (currentRenderTask) {
+                currentRenderTask.cancel();
+                currentRenderTask = null;
+            }
 
             if (data.type === 'pdf') {
                 iframe.classList.add('hidden');
@@ -299,29 +296,63 @@
 
                 const pdfDoc = pdfDocumentCache[data.url];
                 if (pdfDoc) {
-                    // 直接抓取指定的頁數
                     pdfDoc.getPage(data.pageNum).then(page => {
                         const unscaledViewport = page.getViewport({ scale: 1.0 });
-                        // 讓 PDF 寬度自動適應 Tooltip 大小 (約 510px 寬)
                         const scale = 510 / unscaledViewport.width;
                         const viewport = page.getViewport({ scale: scale });
 
+                        const ctx = canvas.getContext('2d');
                         canvas.height = viewport.height;
                         canvas.width = viewport.width;
+                        ctx.clearRect(0, 0, canvas.width, canvas.height); // 清空舊畫面
 
                         const renderContext = {
-                            canvasContext: canvas.getContext('2d'),
+                            canvasContext: ctx,
                             viewport: viewport
                         };
                         
-                        // 繪製到畫布上
-                        page.render(renderContext).promise.then(() => {
-                            loading.classList.add('hidden');
+                        currentRenderTask = page.render(renderContext);
+                        
+                        currentRenderTask.promise.then(() => {
+                            // 【修復重點 2】掃描文字座標並畫上黃色高亮框
+                            page.getTextContent().then(textContent => {
+                                let foundY = -1;
+                                const searchStr = data.text.replace(/\s+/g, '').toLowerCase();
+                                
+                                textContent.items.forEach(item => {
+                                    const itemStr = item.str.replace(/\s+/g, '').toLowerCase();
+                                    if (itemStr.length > 2 && searchStr.includes(itemStr)) {
+                                        // 取得 PDF 座標轉換為視窗內座標
+                                        const pt = viewport.convertToViewportPoint(item.transform[4], item.transform[5]);
+                                        const height = Math.abs(item.transform[3] * viewport.scale) || 14; 
+                                        const width = (item.width * viewport.scale) || 50;
+                                        
+                                        // 繪製半透明黃色螢光筆
+                                        ctx.fillStyle = 'rgba(253, 224, 71, 0.4)';
+                                        ctx.fillRect(pt[0], pt[1] - height, width, height * 1.3);
+                                        
+                                        // 記錄最上方匹配到的 Y 座標
+                                        if (foundY === -1 || pt[1] < foundY) {
+                                            foundY = pt[1] - height;
+                                        }
+                                    }
+                                });
+
+                                // 【修復重點 3】自動將捲軸滾動到匹配位置
+                                if (foundY !== -1) {
+                                    viewerContainer.scrollTo({ top: Math.max(0, foundY - 50), behavior: 'smooth' });
+                                }
+                                loading.classList.add('hidden');
+                            });
+                        }).catch(err => {
+                            if (err.name !== 'RenderingCancelledException') {
+                                console.error('Render Error:', err);
+                                loading.classList.add('hidden');
+                            }
                         });
                     });
                 }
             } else {
-                // 如果是 Docx，退回使用 Google Docs Viewer
                 canvas.classList.add('hidden');
                 iframe.classList.remove('hidden');
                 
@@ -332,7 +363,6 @@
                 setTimeout(() => { loading.classList.add('hidden'); }, 1500);
             }
 
-            // 計算彈出視窗位置
             const x = Math.min(event.pageX + 15, window.innerWidth - 570);
             let y = event.pageY + 15;
             if (y + 400 > window.innerHeight + window.scrollY) {
@@ -361,7 +391,6 @@
             }
         });
 
-        // 5. 啟動分析主流程
         async function startAnalysis() {
             const newFileInput = document.getElementById('newPaperUpload').files[0];
             if (!newFileInput) {
@@ -380,14 +409,12 @@
                 const form = document.getElementById('formSelect').value;
                 const mod = document.getElementById('moduleSelect').value;
                 
-                // 下載並解析歷史文件 (會自動緩存 PDF 引擎實例)
                 const pastPapers = await fetchPastPapersFromGitHub(repo, form, mod);
                 
                 if (pastPapers.length === 0) {
                     alert('注意：未能從 GitHub 找到任何歷史試卷，請確認儲存庫結構正確。');
                 }
 
-                // 攤平所有分段並記錄對應的頁碼
                 let allPastChunks = [];
                 pastPapers.forEach(paper => {
                     paper.pages.forEach(pageData => {
