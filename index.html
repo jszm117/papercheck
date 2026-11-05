@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🐱 數學試卷 Turnitin 查重系統</title>
+    <title>🐱 數學試卷 Turnitin 查重系統 (完整視覺版)</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- JSZip for Deep DOCX & Math Equation Extraction -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <!-- PDF.js for PDF -->
+    <!-- PDF.js for PDF Text Extraction -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <script>
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
@@ -17,11 +17,11 @@
         body { background-color: #f0f8ff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         .cat-shadow { box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.1), 0 2px 4px -1px rgba(59, 130, 246, 0.06); }
         .paw-print { background-image: radial-gradient(circle, #bfdbfe 20%, transparent 20%); background-size: 20px 20px; }
-        /* Document Viewer Scrollbar */
+        
         .doc-viewer::-webkit-scrollbar { width: 10px; }
         .doc-viewer::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 8px; }
         .doc-viewer::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 8px; }
-        /* Turnitin Highlights */
+        
         mark { transition: background-color 0.2s ease; border-radius: 2px; }
         mark.match-exact { background-color: #fca5a5; color: #7f1d1d; cursor: pointer; }
         mark.match-exact:hover { background-color: #ef4444; color: white; }
@@ -34,27 +34,26 @@
         <!-- Header -->
         <header class="bg-blue-600 text-white rounded-t-2xl p-6 text-center cat-shadow relative overflow-hidden">
             <h1 class="text-3xl font-bold mb-2">🐾 數學科 Turnitin 級查重系統</h1>
-            <p class="text-blue-100">支援公式解析 ＆ 沉浸式螢光筆比對介面</p>
+            <p class="text-blue-100">完整版：支援 PDF 原文件嵌入對比與公式檢視</p>
             <div class="absolute -top-4 -right-4 text-7xl opacity-20">🐱</div>
         </header>
 
         <!-- Main Content -->
         <main class="bg-white rounded-b-2xl p-6 md:p-8 cat-shadow mb-8 border-t-4 border-blue-300">
-            <!-- Settings Panel (Hides after processing) -->
             <div id="settingsPanel" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                 <div class="bg-blue-50 p-5 rounded-xl border border-blue-100">
                     <h2 class="text-lg font-bold text-blue-800 mb-4">🐈 試卷設定</h2>
                     <div class="space-y-3">
                         <div>
                             <label class="block text-sm font-medium text-blue-700 mb-1">年級 (Form)</label>
-                            <select id="formSelect" class="w-full rounded-lg border-blue-200 p-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                            <select id="formSelect" class="w-full rounded-lg border-blue-200 p-2 focus:ring-blue-500 outline-none">
                                 <option value="S1">S1</option><option value="S2">S2</option><option value="S3">S3</option>
                                 <option value="S4">S4</option><option value="S5">S5</option><option value="S6" selected>S6</option>
                             </select>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-blue-700 mb-1">卷別 (Module/Paper)</label>
-                            <select id="moduleSelect" class="w-full rounded-lg border-blue-200 p-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                            <select id="moduleSelect" class="w-full rounded-lg border-blue-200 p-2 focus:ring-blue-500 outline-none">
                                 <option value="Compulsory_P1">Compulsory Part (Paper 1)</option>
                                 <option value="Compulsory_P2">Compulsory Part (Paper 2)</option>
                                 <option value="M1">Extended Module 1 (M1)</option>
@@ -63,8 +62,7 @@
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-blue-700 mb-1">GitHub 儲存庫</label>
-                            <!-- ★★★ 請在此修改為你的帳號 ★★★ -->
-                            <input type="text" id="repoInput" value="jszm117/papercheck" readonly class="w-full rounded-lg border-gray-300 p-2 outline-none border bg-gray-100 text-gray-600 cursor-not-allowed">
+                            <input type="text" id="repoInput" value="jszm117/papercheck" class="w-full rounded-lg border-gray-300 p-2 outline-none border bg-white">
                         </div>
                     </div>
                 </div>
@@ -87,27 +85,25 @@
             <div id="loadingState" class="hidden text-center py-12">
                 <div class="inline-block animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-600 mb-4"></div>
                 <p class="text-xl text-blue-800 font-bold" id="loadingText">正在進行深度文件掃描... 🐱</p>
-                <p class="text-sm text-blue-500 mt-2">（包括提取數學公式及比對文字特徵）</p>
+                <p class="text-sm text-blue-500 mt-2">（系統正在抓取文字與公式特徵）</p>
             </div>
 
-            <!-- Turnitin Style Document Viewer -->
+            <!-- Document Viewer -->
             <div id="documentViewerContainer" class="hidden">
                 <div class="flex justify-between items-center border-b-2 border-blue-200 pb-3 mb-4">
-                    <h2 class="text-2xl font-bold text-slate-800">📄 查重報告 (Document Report)</h2>
+                    <h2 class="text-2xl font-bold text-slate-800">📄 查重報告 (Visual Report)</h2>
                     <button onclick="location.reload()" class="text-sm bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2 rounded-lg font-medium transition">
                         🔄 重新檢查另一份
                     </button>
                 </div>
                 
-                <!-- Stats -->
                 <div class="flex gap-4 mb-4">
-                    <span class="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm font-bold border border-red-300">🔴 完全重複: <span id="statExact">0</span> 題</span>
-                    <span class="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm font-bold border border-yellow-300">🟡 高度相似: <span id="statHigh">0</span> 題</span>
+                    <span class="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm font-bold border border-red-300">🔴 完全重複: <span id="statExact">0</span> 行</span>
+                    <span class="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm font-bold border border-yellow-300">🟡 高度相似: <span id="statHigh">0</span> 行</span>
                 </div>
 
-                <p class="text-sm text-slate-500 mb-4">💡 提示：將滑鼠游標移至<mark class="match-exact px-1">紅色</mark>或<mark class="match-high px-1">黃色</mark>標記的文字上，即可查看原試卷題目來源。</p>
+                <p class="text-sm text-slate-500 mb-4">💡 提示：<strong class="text-blue-600">點擊</strong>高亮文字，系統會載入歷史文件的 PDF 視覺快照，方便核對完整公式！</p>
 
-                <!-- Document Paper Render Area -->
                 <div class="bg-gray-50 border-2 border-gray-200 rounded-lg p-8 shadow-inner max-h-[700px] overflow-y-auto doc-viewer text-lg leading-relaxed font-serif" id="docRenderArea">
                     <!-- Text gets injected here -->
                 </div>
@@ -115,27 +111,37 @@
         </main>
     </div>
 
-    <!-- Floating Tooltip Window -->
-    <div id="matchTooltip" class="hidden absolute z-50 bg-white border-2 border-blue-300 shadow-2xl rounded-xl p-4 w-96 pointer-events-none transition-opacity duration-200 opacity-0 transform -translate-y-2">
-        <div class="border-b border-gray-200 pb-2 mb-2">
-            <span class="text-xs font-bold text-blue-600 uppercase tracking-wider">📁 來源檔案 (Source Paper)</span>
-            <div id="ttSource" class="text-sm font-bold text-slate-800 mt-1 truncate">...</div>
-            <div id="ttScore" class="text-xs font-semibold text-white px-2 py-1 rounded inline-block mt-1">...</div>
+    <!-- 內嵌 PDF Viewer 的懸浮視窗 (Tooltip) -->
+    <div id="matchTooltip" class="hidden absolute z-50 bg-white border-2 border-blue-400 shadow-2xl rounded-xl p-4 w-[550px] pointer-events-auto transition-opacity duration-200 opacity-0 transform -translate-y-2">
+        <div class="flex justify-between items-center border-b border-gray-200 pb-2 mb-2">
+            <div class="overflow-hidden">
+                <span class="text-xs font-bold text-blue-600 uppercase tracking-wider">📁 來源檔案 (Source Paper)</span>
+                <div id="ttSource" class="text-sm font-bold text-slate-800 mt-1 truncate">...</div>
+            </div>
+            <div id="ttScore" class="text-xs font-bold text-white px-2 py-1 rounded whitespace-nowrap ml-2">...</div>
         </div>
+        
         <div>
-            <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">📝 歷史題目原文 (Original Text)</span>
-            <div id="ttText" class="text-sm text-slate-700 mt-1 bg-slate-50 p-2 rounded border border-slate-100 max-h-48 overflow-hidden font-serif whitespace-pre-wrap">...</div>
+            <span class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">👀 原始文件預覽 (Original Document Preview)</span>
+            <div class="bg-slate-100 border border-slate-300 rounded overflow-hidden h-72 relative">
+                <div class="absolute inset-0 flex items-center justify-center text-slate-400 text-sm font-bold">
+                    載入文件中... (Loading Document...)
+                </div>
+                <!-- iframe 將會載入 Google Docs Viewer -->
+                <iframe id="ttIframe" class="w-full h-full relative z-10 bg-white" frameborder="0"></iframe>
+            </div>
+            <p class="text-xs text-slate-400 mt-2 text-center">💡 提示：您可以在此小視窗內上下捲動查看。點擊視窗外部即可關閉。</p>
         </div>
     </div>
 
+    <!-- 這裡包含了所有缺失的 JavaScript -->
     <script>
-        // Global variables to store matches for tooltips
         let matchDatabase = {};
+        const tooltip = document.getElementById('matchTooltip');
 
-        // --- 1. 增強版文件解析引擎 (破解 Word 數學公式) ---
+        // 1. 文件提取引擎 (支援 Word XML 與 PDF 文字層)
         async function extractTextFromFile(file) {
             if (file.name.endsWith('.docx')) {
-                // 深度 XML 解析：同時抓取普通文字 <w:t> 和 數學公式 <m:t>
                 const zip = await JSZip.loadAsync(file);
                 const docXml = await zip.file("word/document.xml").async("string");
                 const parser = new DOMParser();
@@ -156,7 +162,6 @@
                 return fullText;
                 
             } else if (file.name.endsWith('.pdf')) {
-                // PDF 文字層解析
                 const arrayBuffer = await file.arrayBuffer();
                 const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
                 let fullText = '';
@@ -165,12 +170,9 @@
                     const page = await pdf.getPage(i);
                     const textContent = await page.getTextContent();
                     let lastY = -1;
-                    
                     for (let item of textContent.items) {
                         const y = item.transform[5];
-                        if (lastY !== -1 && Math.abs(y - lastY) > 5) {
-                            fullText += '\n';
-                        }
+                        if (lastY !== -1 && Math.abs(y - lastY) > 5) fullText += '\n';
                         fullText += item.str;
                         lastY = y;
                     }
@@ -181,13 +183,11 @@
             return '';
         }
 
-        // --- 2. 切割文字 (依據換行與段落) ---
         function splitIntoChunks(text) {
-            // 保留換行結構，將整份文件切成小段落 (每段大約是一題或一個步驟)
             return text.split('\n').map(c => c.trim()).filter(c => c.length > 5);
         }
 
-        // --- 3. 相似度演算法 (N-Gram / Dice Coefficient) ---
+        // 2. 相似度演算法 (N-Gram)
         function calculateSimilarity(str1, str2) {
             const clean1 = str1.replace(/\s+/g, '').toLowerCase();
             const clean2 = str2.replace(/\s+/g, '').toLowerCase();
@@ -211,73 +211,72 @@
             return (2.0 * intersection) / (clean1.length - 1 + clean2.length - 1);
         }
 
-        // --- 4. GitHub 歷史試卷下載 ---
+        // 3. GitHub 提取邏輯
         async function fetchPastPapersFromGitHub(repo, form, moduleName) {
             if (!repo) return [];
-            const years = [2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018];
+            const years = [2026, 2025, 2024, 2023, 2022, 2021, 2020];
             const terms = ['Term1', 'Final'];
-            const exts = ['.docx', '.pdf'];
-            const branches = ['main', 'master'];
+            const exts = ['.pdf', '.docx'];
             let fetchedTexts = [];
 
             for (const year of years) {
                 for (const term of terms) {
                     for (const ext of exts) {
                         const path = `papers/${form}/${moduleName}_${year}_${term}${ext}`;
-                        let fileFound = false;
-
-                        for (const branch of branches) {
-                            if (fileFound) break;
-                            const url = `https://raw.githubusercontent.com/${repo}/${branch}/${path}`;
-                            try {
-                                const response = await fetch(url);
-                                if (response.ok) {
-                                    const blob = await response.blob();
-                                    const file = new File([blob], path);
-                                    const text = await extractTextFromFile(file);
-                                    fetchedTexts.push({ source: path, text: text });
-                                    fileFound = true;
-                                }
-                            } catch (e) {}
-                        }
+                        const url = `https://raw.githubusercontent.com/${repo}/main/${path}`;
+                        try {
+                            const response = await fetch(url);
+                            if (response.ok) {
+                                const blob = await response.blob();
+                                const file = new File([blob], path);
+                                const text = await extractTextFromFile(file);
+                                fetchedTexts.push({ source: path, text: text });
+                                break; // 如果找到了 PDF，就不用再找同一份的 DOCX
+                            }
+                        } catch (e) {}
                     }
                 }
             }
             return fetchedTexts;
         }
 
-        // --- 5. Tooltip (懸浮視窗) 控制邏輯 ---
-        const tooltip = document.getElementById('matchTooltip');
-        
+        // 4. Tooltip 與 PDF Iframe 視覺載入邏輯
         function showTooltip(event, matchId) {
             const data = matchDatabase[matchId];
             if (!data) return;
 
             document.getElementById('ttSource').innerText = data.source;
-            document.getElementById('ttText').innerText = data.text;
             
             const scoreEl = document.getElementById('ttScore');
             scoreEl.innerText = `相似度: ${data.percentage}%`;
-            if (data.percentage === 100) {
-                scoreEl.className = "text-xs font-bold text-white px-2 py-1 rounded inline-block mt-1 bg-red-600";
-            } else {
-                scoreEl.className = "text-xs font-bold text-white px-2 py-1 rounded inline-block mt-1 bg-yellow-600";
+            scoreEl.className = data.percentage === 100 
+                ? "text-xs font-bold text-white px-2 py-1 rounded bg-red-600 ml-2" 
+                : "text-xs font-bold text-white px-2 py-1 rounded bg-yellow-600 ml-2";
+
+            // 使用 Google Docs Viewer 載入 GitHub 上的原生檔案 (PDF/Docx)
+            const repo = document.getElementById('repoInput').value.trim();
+            const rawUrl = `https://raw.githubusercontent.com/${repo}/main/${data.source}`;
+            const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(rawUrl)}&embedded=true`;
+            
+            const iframe = document.getElementById('ttIframe');
+            // 只在來源改變時重新讀取 iframe 以節省網路與效能
+            if (iframe.src !== viewerUrl) {
+                iframe.src = viewerUrl;
             }
 
-            // Calculate position
-            const x = event.pageX + 15;
+            // 計算彈出視窗位置，避免超出螢幕邊界
+            const x = Math.min(event.pageX + 15, window.innerWidth - 570);
             let y = event.pageY + 15;
             
-            // Prevent going off bottom screen
-            if (y + 200 > window.innerHeight + window.scrollY) {
-                y = event.pageY - 220;
+            if (y + 400 > window.innerHeight + window.scrollY) {
+                y = event.pageY - 420; 
             }
 
             tooltip.style.left = `${x}px`;
             tooltip.style.top = `${y}px`;
             tooltip.classList.remove('hidden');
             
-            // Trigger animation
+            // 觸發淡入動畫
             setTimeout(() => {
                 tooltip.classList.remove('opacity-0', '-translate-y-2');
                 tooltip.classList.add('opacity-100', 'translate-y-0');
@@ -290,7 +289,14 @@
             setTimeout(() => { tooltip.classList.add('hidden'); }, 200);
         }
 
-        // --- 主程式：Turnitin 渲染流程 ---
+        // 點擊 Tooltip 外圍的空白區域時隱藏 Tooltip
+        document.addEventListener('mousedown', function(event) {
+            if (!tooltip.contains(event.target) && !event.target.closest('mark')) {
+                hideTooltip();
+            }
+        });
+
+        // 5. 啟動分析主流程
         async function startAnalysis() {
             const newFileInput = document.getElementById('newPaperUpload').files[0];
             if (!newFileInput) {
@@ -302,50 +308,41 @@
             document.getElementById('loadingState').classList.remove('hidden');
 
             try {
-                // 1. 提取新試卷文字
                 const newText = await extractTextFromFile(newFileInput);
-                // 為了在網頁上還原排版，我們將原文用換行符號切開
                 const originalLines = newText.split('\n'); 
-                
-                // 將文字切成較長的「段落」做比對，避免單獨數字(如 "1.") 誤判
                 const compareChunks = splitIntoChunks(newText);
-
-                // 2. 獲取歷史庫
+                
                 const repo = document.getElementById('repoInput').value.trim();
                 const form = document.getElementById('formSelect').value;
                 const mod = document.getElementById('moduleSelect').value;
                 const pastPapers = await fetchPastPapersFromGitHub(repo, form, mod);
                 
                 if (pastPapers.length === 0) {
-                    alert('注意：未能從 GitHub 找到任何歷史試卷，請確認是否有上傳。');
+                    alert('注意：未能從 GitHub 找到任何歷史試卷，請確認儲存庫結構正確。');
                 }
 
-                // 建立歷史題目資料庫
                 let allPastChunks = [];
                 pastPapers.forEach(paper => {
                     const chunks = splitIntoChunks(paper.text);
                     chunks.forEach(c => allPastChunks.push({ source: paper.source, text: c }));
                 });
 
-                document.getElementById('loadingText').innerText = '正在生成 Turnitin 渲染報告... 🔢';
+                document.getElementById('loadingText').innerText = '正在比對並生成視覺報告... 🔢';
 
                 let exactCount = 0;
                 let highCount = 0;
                 let htmlOutput = '';
-                matchDatabase = {}; // Reset
+                matchDatabase = {}; 
 
-                // 3. 逐行渲染與比對
                 for (let i = 0; i < originalLines.length; i++) {
                     const line = originalLines[i];
                     const trimmedLine = line.trim();
                     
                     if (trimmedLine.length < 5) {
-                        // 太短的字串 (例如題號、空格) 不做查重，直接顯示
                         htmlOutput += `<div>${line || '&nbsp;'}</div>`;
                         continue;
                     }
 
-                    // 尋找最佳匹配
                     let bestMatch = { score: 0, text: '', source: '' };
                     allPastChunks.forEach(past => {
                         const score = calculateSimilarity(trimmedLine, past.text);
@@ -357,21 +354,20 @@
                     const percentage = Math.round(bestMatch.score * 100);
                     const matchId = 'match_' + i;
 
+                    // 這裡改為 onclick，方便使用者操作 iframe 捲動軸而不會消失
                     if (percentage === 100) {
                         exactCount++;
                         matchDatabase[matchId] = { percentage, ...bestMatch };
-                        htmlOutput += `<div class="my-1"><mark class="match-exact" onmousemove="showTooltip(event, '${matchId}')" onmouseleave="hideTooltip()">${line}</mark></div>`;
+                        htmlOutput += `<div class="my-1"><mark class="match-exact" onclick="showTooltip(event, '${matchId}')">${line}</mark></div>`;
                     } else if (percentage >= 70) {
                         highCount++;
                         matchDatabase[matchId] = { percentage, ...bestMatch };
-                        htmlOutput += `<div class="my-1"><mark class="match-high" onmousemove="showTooltip(event, '${matchId}')" onmouseleave="hideTooltip()">${line}</mark></div>`;
+                        htmlOutput += `<div class="my-1"><mark class="match-high" onclick="showTooltip(event, '${matchId}')">${line}</mark></div>`;
                     } else {
-                        // 綠色安全/原創文字
                         htmlOutput += `<div>${line}</div>`;
                     }
                 }
 
-                // 更新畫面
                 document.getElementById('statExact').innerText = exactCount;
                 document.getElementById('statHigh').innerText = highCount;
                 document.getElementById('docRenderArea').innerHTML = htmlOutput;
