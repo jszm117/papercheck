@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🐱 數學試卷 Turnitin 查重系統 (無 gview 依賴修復版)</title>
+    <title>🐱 數學試卷 Turnitin 查重系統 (完整預覽修復版)</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- JSZip for Deep DOCX -->
@@ -34,7 +34,7 @@
         <!-- Header -->
         <header class="bg-blue-600 text-white rounded-t-2xl p-6 text-center cat-shadow relative overflow-hidden">
             <h1 class="text-3xl font-bold mb-2">🐾 數學科 Turnitin 級查重系統</h1>
-            <p class="text-blue-100">修復版：移除 gview 依賴，改用純前端 PDF.js 畫布渲染</p>
+            <p class="text-blue-100">支援 PDF 畫布渲染與 DOCX 全文高亮追蹤</p>
             <div class="absolute -top-4 -right-4 text-7xl opacity-20">🐱</div>
         </header>
 
@@ -110,7 +110,7 @@
         </main>
     </div>
 
-    <!-- 內嵌 PDF Canvas 渲染的懸浮視窗 (已移除 iframe/gview) -->
+    <!-- 內嵌預覽的懸浮視窗 -->
     <div id="matchTooltip" class="hidden absolute z-50 bg-white border-2 border-blue-400 shadow-2xl rounded-xl p-4 w-[550px] pointer-events-auto transition-opacity duration-200 opacity-0 transform -translate-y-2">
         <div class="flex justify-between items-center border-b border-gray-200 pb-2 mb-2">
             <div class="overflow-hidden">
@@ -121,7 +121,7 @@
         </div>
         
         <div>
-            <span class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">👀 原始檔案畫布預覽 (Canvas Render)</span>
+            <span class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">👀 原始檔案預覽 (Preview)</span>
             
             <div id="ttViewerContainer" class="bg-slate-200 border border-slate-300 rounded overflow-y-auto custom-scrollbar overflow-x-hidden h-80 relative flex flex-col items-center scroll-smooth">
                 
@@ -130,9 +130,10 @@
                     正在繪製頁面與座標...
                 </div>
 
-                <!-- 僅保留 Canvas 純前端繪圖，不使用外部服務 -->
+                <!-- PDF 專用畫布 -->
                 <canvas id="ttCanvas" class="relative z-10 bg-white shadow-md my-2"></canvas>
-                <div id="ttFallbackText" class="hidden p-4 text-sm text-slate-700 whitespace-pre-wrap font-serif w-full bg-white"></div>
+                <!-- DOCX 專用純文字框 -->
+                <div id="ttFallbackText" class="hidden p-6 text-sm text-slate-700 whitespace-pre-wrap font-serif w-full bg-white text-left leading-relaxed min-h-full relative z-10"></div>
             </div>
         </div>
     </div>
@@ -140,6 +141,7 @@
     <script>
         let matchDatabase = {};
         let pdfDocumentCache = {}; 
+        let docxTextCache = {}; // 新增：用來暫存 DOCX 的完整全文
         let currentRenderTask = null;
         const tooltip = document.getElementById('matchTooltip');
 
@@ -207,7 +209,6 @@
                             if (response.ok) {
                                 if (ext === '.pdf') {
                                     const arrayBuffer = await response.arrayBuffer();
-                                    // 載入 PDF 到本地快取
                                     const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
                                     pdfDocumentCache[url] = pdf; 
                                     
@@ -230,6 +231,9 @@
                                     const blob = await response.blob();
                                     const file = new File([blob], path);
                                     const text = await extractTextFromFile(file);
+                                    
+                                    // 儲存 DOCX 完整文字到快取中
+                                    docxTextCache[url] = text; 
                                     fetchedTexts.push({ source: path, url: url, type: 'docx', pages: [{pageNum: 1, text: text}] });
                                 }
                                 break; 
@@ -268,7 +272,7 @@
             const data = matchDatabase[matchId];
             if (!data) return;
 
-            document.getElementById('ttSource').innerText = `${data.source} (第 ${data.pageNum} 頁)`;
+            document.getElementById('ttSource').innerText = data.type === 'pdf' ? `${data.source} (第 ${data.pageNum} 頁)` : data.source;
             
             const scoreEl = document.getElementById('ttScore');
             scoreEl.innerText = `相似度: ${data.percentage}%`;
@@ -284,7 +288,6 @@
             loading.classList.remove('hidden');
             viewerContainer.scrollTop = 0; 
 
-            // 取消之前的繪圖任務，避免覆蓋錯亂
             if (currentRenderTask) {
                 currentRenderTask.cancel();
                 currentRenderTask = null;
@@ -306,15 +309,10 @@
                         canvas.width = viewport.width;
                         ctx.clearRect(0, 0, canvas.width, canvas.height); 
 
-                        const renderContext = {
-                            canvasContext: ctx,
-                            viewport: viewport
-                        };
-                        
+                        const renderContext = { canvasContext: ctx, viewport: viewport };
                         currentRenderTask = page.render(renderContext);
                         
                         currentRenderTask.promise.then(() => {
-                            // 計算並畫上黃色高亮框
                             page.getTextContent().then(textContent => {
                                 let foundY = -1;
                                 const searchStr = data.text.replace(/\s+/g, '').toLowerCase();
@@ -329,32 +327,51 @@
                                         ctx.fillStyle = 'rgba(253, 224, 71, 0.45)';
                                         ctx.fillRect(pt[0], pt[1] - height, width, height * 1.3);
                                         
-                                        if (foundY === -1 || pt[1] < foundY) {
-                                            foundY = pt[1] - height;
-                                        }
+                                        if (foundY === -1 || pt[1] < foundY) foundY = pt[1] - height;
                                     }
                                 });
 
-                                // 自動將視窗捲動至該題目高度
                                 if (foundY !== -1) {
                                     viewerContainer.scrollTo({ top: Math.max(0, foundY - 40), behavior: 'smooth' });
                                 }
                                 loading.classList.add('hidden');
                             });
                         }).catch(err => {
-                            if (err.name !== 'RenderingCancelledException') {
-                                console.error('Render Error:', err);
-                                loading.classList.add('hidden');
-                            }
+                            if (err.name !== 'RenderingCancelledException') loading.classList.add('hidden');
                         });
                     });
                 }
             } else {
-                // 如果是 Docx，直接顯示文字內容
+                // DOCX 處理邏輯
                 canvas.classList.add('hidden');
                 fallbackText.classList.remove('hidden');
-                fallbackText.innerText = data.text || '（Word 檔案不支援畫布渲染，顯示純文字）';
+                
+                // 取得剛才快取的完整 DOCX 全文
+                const fullText = docxTextCache[data.url] || data.text;
+                
+                // 跳脫字元，防止渲染出錯
+                const escapeHTML = str => str.replace(/[&<>'"]/g, tag => ({
+                    '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+                }[tag]));
+                
+                let htmlContent = escapeHTML(fullText);
+                const matchStr = escapeHTML(data.text);
+                
+                // 替換相符的文字，加入醒目的黃色高亮標籤
+                if (matchStr && htmlContent.includes(matchStr)) {
+                    htmlContent = htmlContent.replace(matchStr, `<mark id="docx-highlight" class="bg-yellow-300 text-black px-1 rounded shadow-sm">${matchStr}</mark>`);
+                }
+                
+                fallbackText.innerHTML = htmlContent || '（Word 檔案無法讀取內容）';
                 loading.classList.add('hidden');
+
+                // 延遲一下讓瀏覽器畫出文字，然後自動捲動到黃色高亮的地方
+                setTimeout(() => {
+                    const mark = document.getElementById('docx-highlight');
+                    if (mark) {
+                        mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }, 100);
             }
 
             const x = Math.min(event.pageX + 15, window.innerWidth - 570);
