@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🐱 數學試卷 Turnitin 查重系統 (完整預覽修復版)</title>
+    <title>🐱 數學試卷 Turnitin 查重系統 (可拖曳視窗 + 列印版)</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- JSZip for Deep DOCX -->
@@ -27,6 +27,20 @@
         mark.match-exact:hover { background-color: #ef4444; color: white; }
         mark.match-high { background-color: #fde047; color: #854d0e; cursor: pointer; }
         mark.match-high:hover { background-color: #eab308; color: white; }
+
+        /* 拖曳標題的鼠標樣式 */
+        #tooltipHeader { cursor: grab; }
+        #tooltipHeader:active { cursor: grabbing; }
+
+        /* 列印專用 CSS，隱藏不必要的 UI */
+        @media print {
+            body { background: white !important; background-image: none !important; padding: 0 !important; color: black !important; }
+            .no-print, header, #settingsPanel, #matchTooltip { display: none !important; }
+            main { box-shadow: none !important; border: none !important; padding: 0 !important; margin: 0 !important; }
+            .doc-viewer { max-height: none !important; overflow: visible !important; border: 1px solid #ccc !important; box-shadow: none !important; }
+            mark.match-exact { background-color: #ffcccc !important; color: #990000 !important; }
+            mark.match-high { background-color: #ffffcc !important; color: #996600 !important; }
+        }
     </style>
 </head>
 <body class="paw-print min-h-screen p-4 md:p-8 text-slate-800 relative">
@@ -34,7 +48,7 @@
         <!-- Header -->
         <header class="bg-blue-600 text-white rounded-t-2xl p-6 text-center cat-shadow relative overflow-hidden">
             <h1 class="text-3xl font-bold mb-2">🐾 數學科 Turnitin 級查重系統</h1>
-            <p class="text-blue-100">支援 PDF 畫布渲染與 DOCX 全文高亮追蹤</p>
+            <p class="text-blue-100">支援 PDF 畫布渲染、DOCX 預覽、可拖曳視窗與匯出 PDF</p>
             <div class="absolute -top-4 -right-4 text-7xl opacity-20">🐱</div>
         </header>
 
@@ -90,11 +104,16 @@
 
             <!-- Document Viewer -->
             <div id="documentViewerContainer" class="hidden">
-                <div class="flex justify-between items-center border-b-2 border-blue-200 pb-3 mb-4">
+                <div class="flex justify-between items-center border-b-2 border-blue-200 pb-3 mb-4 flex-wrap gap-4">
                     <h2 class="text-2xl font-bold text-slate-800">📄 查重報告 (Visual Report)</h2>
-                    <button onclick="location.reload()" class="text-sm bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2 rounded-lg font-medium transition">
-                        🔄 重新檢查另一份
-                    </button>
+                    <div class="flex gap-2 no-print">
+                        <button onclick="window.print()" class="text-sm bg-blue-100 hover:bg-blue-200 text-blue-700 px-4 py-2 rounded-lg font-bold transition flex items-center gap-1 shadow-sm">
+                            🖨️ 匯出 PDF
+                        </button>
+                        <button onclick="location.reload()" class="text-sm bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2 rounded-lg font-bold transition flex items-center gap-1 shadow-sm">
+                            🔄 重新檢查
+                        </button>
+                    </div>
                 </div>
                 
                 <div class="flex gap-4 mb-4">
@@ -102,7 +121,7 @@
                     <span class="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm font-bold border border-yellow-300">🟡 高度相似: <span id="statHigh">0</span> 行</span>
                 </div>
 
-                <p class="text-sm text-slate-500 mb-4">💡 提示：<strong class="text-blue-600">點擊</strong>高亮文字，系統會自動跳轉至對應題目頁面並標記黃色高亮！</p>
+                <p class="text-sm text-slate-500 mb-4 no-print">💡 提示：<strong class="text-blue-600">點擊</strong>高亮文字即可預覽，預覽視窗<strong class="text-blue-600">頂部可以自由拖曳</strong>，避免遮擋題目！</p>
 
                 <div class="bg-gray-50 border-2 border-gray-200 rounded-lg p-8 shadow-inner max-h-[700px] overflow-y-auto doc-viewer text-lg leading-relaxed font-serif" id="docRenderArea">
                 </div>
@@ -110,30 +129,34 @@
         </main>
     </div>
 
-    <!-- 內嵌預覽的懸浮視窗 -->
-    <div id="matchTooltip" class="hidden absolute z-50 bg-white border-2 border-blue-400 shadow-2xl rounded-xl p-4 w-[550px] pointer-events-auto transition-opacity duration-200 opacity-0 transform -translate-y-2">
-        <div class="flex justify-between items-center border-b border-gray-200 pb-2 mb-2">
-            <div class="overflow-hidden">
-                <span class="text-xs font-bold text-blue-600 uppercase tracking-wider">📁 來源檔案 (Source Paper)</span>
-                <div id="ttSource" class="text-sm font-bold text-slate-800 mt-1 truncate">...</div>
+    <!-- 內嵌預覽的懸浮視窗 (加入 tooltipHeader 以供拖曳) -->
+    <div id="matchTooltip" class="hidden absolute z-50 bg-white border-2 border-blue-400 shadow-2xl rounded-xl w-[550px] pointer-events-auto transition-opacity duration-200 opacity-0 transform -translate-y-2">
+        <!-- 頂部拖曳把手 -->
+        <div id="tooltipHeader" class="flex justify-between items-center bg-blue-50 border-b border-gray-200 p-3 rounded-t-xl select-none">
+            <div class="overflow-hidden flex items-center gap-2">
+                <span class="text-xl">🖐️</span>
+                <div>
+                    <span class="text-xs font-bold text-blue-600 uppercase tracking-wider block">📁 來源檔案 (Source Paper)</span>
+                    <div id="ttSource" class="text-sm font-bold text-slate-800 truncate pointer-events-none">...</div>
+                </div>
             </div>
-            <div id="ttScore" class="text-xs font-bold text-white px-2 py-1 rounded whitespace-nowrap ml-2 flex-shrink-0">...</div>
+            <div id="ttScore" class="text-xs font-bold text-white px-2 py-1 rounded whitespace-nowrap ml-2 flex-shrink-0 pointer-events-none">...</div>
         </div>
         
-        <div>
+        <div class="p-4">
             <span class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 block">👀 原始檔案預覽 (Preview)</span>
             
             <div id="ttViewerContainer" class="bg-slate-200 border border-slate-300 rounded overflow-y-auto custom-scrollbar overflow-x-hidden h-80 relative flex flex-col items-center scroll-smooth">
                 
                 <div id="ttLoading" class="absolute inset-0 flex flex-col items-center justify-center text-slate-600 text-sm font-bold bg-slate-100/90 z-20 backdrop-blur-sm">
                     <div class="animate-spin rounded-full h-8 w-8 border-t-4 border-b-4 border-blue-600 mb-2"></div>
-                    正在繪製頁面與座標...
+                    正在載入內容...
                 </div>
 
                 <!-- PDF 專用畫布 -->
                 <canvas id="ttCanvas" class="relative z-10 bg-white shadow-md my-2"></canvas>
-                <!-- DOCX 專用純文字框 -->
-                <div id="ttFallbackText" class="hidden p-6 text-sm text-slate-700 whitespace-pre-wrap font-serif w-full bg-white text-left leading-relaxed min-h-full relative z-10"></div>
+                <!-- DOCX 專用純文字框 (加入 break-words 確保不超出邊界，以及 min-h-full 確保有底色) -->
+                <div id="ttFallbackText" class="hidden p-6 text-sm text-slate-700 whitespace-pre-wrap break-words font-serif w-full bg-white text-left leading-relaxed min-h-full relative z-10"></div>
             </div>
         </div>
     </div>
@@ -141,9 +164,35 @@
     <script>
         let matchDatabase = {};
         let pdfDocumentCache = {}; 
-        let docxTextCache = {}; // 新增：用來暫存 DOCX 的完整全文
+        let docxTextCache = {}; 
         let currentRenderTask = null;
+        
+        // 拖曳功能變數
         const tooltip = document.getElementById('matchTooltip');
+        const tooltipHeader = document.getElementById('tooltipHeader');
+        let isDragging = false;
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+
+        // 綁定拖曳事件
+        tooltipHeader.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            dragOffsetX = e.pageX - tooltip.offsetLeft;
+            dragOffsetY = e.pageY - tooltip.offsetTop;
+            document.body.style.userSelect = 'none'; // 避免拖曳時選取到文字
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                tooltip.style.left = `${e.pageX - dragOffsetX}px`;
+                tooltip.style.top = `${e.pageY - dragOffsetY}px`;
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+            document.body.style.userSelect = '';
+        });
 
         async function extractTextFromFile(file) {
             if (file.name.endsWith('.docx')) {
@@ -232,7 +281,6 @@
                                     const file = new File([blob], path);
                                     const text = await extractTextFromFile(file);
                                     
-                                    // 儲存 DOCX 完整文字到快取中
                                     docxTextCache[url] = text; 
                                     fetchedTexts.push({ source: path, url: url, type: 'docx', pages: [{pageNum: 1, text: text}] });
                                 }
@@ -277,8 +325,8 @@
             const scoreEl = document.getElementById('ttScore');
             scoreEl.innerText = `相似度: ${data.percentage}%`;
             scoreEl.className = data.percentage === 100 
-                ? "text-xs font-bold text-white px-2 py-1 rounded bg-red-600 ml-2 flex-shrink-0" 
-                : "text-xs font-bold text-white px-2 py-1 rounded bg-yellow-600 ml-2 flex-shrink-0";
+                ? "text-xs font-bold text-white px-2 py-1 rounded bg-red-600 ml-2 flex-shrink-0 pointer-events-none" 
+                : "text-xs font-bold text-white px-2 py-1 rounded bg-yellow-600 ml-2 flex-shrink-0 pointer-events-none";
 
             const canvas = document.getElementById('ttCanvas');
             const fallbackText = document.getElementById('ttFallbackText');
@@ -346,10 +394,8 @@
                 canvas.classList.add('hidden');
                 fallbackText.classList.remove('hidden');
                 
-                // 取得剛才快取的完整 DOCX 全文
                 const fullText = docxTextCache[data.url] || data.text;
                 
-                // 跳脫字元，防止渲染出錯
                 const escapeHTML = str => str.replace(/[&<>'"]/g, tag => ({
                     '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
                 }[tag]));
@@ -357,15 +403,13 @@
                 let htmlContent = escapeHTML(fullText);
                 const matchStr = escapeHTML(data.text);
                 
-                // 替換相符的文字，加入醒目的黃色高亮標籤
                 if (matchStr && htmlContent.includes(matchStr)) {
                     htmlContent = htmlContent.replace(matchStr, `<mark id="docx-highlight" class="bg-yellow-300 text-black px-1 rounded shadow-sm">${matchStr}</mark>`);
                 }
                 
-                fallbackText.innerHTML = htmlContent || '（Word 檔案無法讀取內容）';
+                fallbackText.innerHTML = htmlContent || '（未能成功擷取 Word 文字內容）';
                 loading.classList.add('hidden');
 
-                // 延遲一下讓瀏覽器畫出文字，然後自動捲動到黃色高亮的地方
                 setTimeout(() => {
                     const mark = document.getElementById('docx-highlight');
                     if (mark) {
@@ -374,16 +418,18 @@
                 }, 100);
             }
 
-            const x = Math.min(event.pageX + 15, window.innerWidth - 570);
-            let y = event.pageY + 15;
-            if (y + 400 > window.innerHeight + window.scrollY) {
-                y = event.pageY - 420; 
+            // 初始化顯示位置（如果在拖曳途中點擊另一個，則不改變原本的位置，否則重新設定）
+            if (tooltip.classList.contains('hidden')) {
+                const x = Math.min(event.pageX + 15, window.innerWidth - 570);
+                let y = event.pageY + 15;
+                if (y + 400 > window.innerHeight + window.scrollY) {
+                    y = event.pageY - 450; 
+                }
+                tooltip.style.left = `${x}px`;
+                tooltip.style.top = `${y}px`;
             }
-
-            tooltip.style.left = `${x}px`;
-            tooltip.style.top = `${y}px`;
-            tooltip.classList.remove('hidden');
             
+            tooltip.classList.remove('hidden');
             setTimeout(() => {
                 tooltip.classList.remove('opacity-0', '-translate-y-2');
                 tooltip.classList.add('opacity-100', 'translate-y-0');
@@ -396,6 +442,7 @@
             setTimeout(() => { tooltip.classList.add('hidden'); }, 200);
         }
 
+        // 當點擊 tooltip 外部時才關閉
         document.addEventListener('mousedown', function(event) {
             if (!tooltip.contains(event.target) && !event.target.closest('mark')) {
                 hideTooltip();
